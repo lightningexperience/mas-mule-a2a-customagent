@@ -37,7 +37,12 @@ def agent_card():
         "capabilities": {"streaming": False},
         "defaultInputModes": ["text"],
         "defaultOutputModes": ["text"],
-        "skills": ["general-assistance"]
+        "skills": [
+            {
+                "name": "general-assistance",
+                "description": "Responds to general-purpose queries using a fast LLM."
+            }
+        ]
     }
 
 @app.post("/tasks/send")
