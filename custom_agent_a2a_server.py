@@ -34,7 +34,10 @@ def agent_card():
         "description": "Handles general queries using Groq LLM.",
         "url": os.getenv("BASE_URL", "http://localhost:9000"),
         "version": "1.0",
+        "protocolVersion": "0.3.0",
         "capabilities": {"streaming": False},
+        "transports": ["rest"],
+        "preferredTransport": "rest",
         "defaultInputModes": ["text"],
         "defaultOutputModes": ["text"],
         "skills": [
