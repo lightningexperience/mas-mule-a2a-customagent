@@ -1,2 +1,1 @@
-web: uvicorn customagent-a2a-server:app --host=0.0.0.0 --port=${PORT}
-
+web: python customagent-a2a-server.py
