@@ -39,8 +39,10 @@ def agent_card():
         "defaultOutputModes": ["text"],
         "skills": [
             {
-                "name": "general-assistance",
-                "description": "Responds to general-purpose queries using a fast LLM."
+                "id": "general-assistance",
+                "name": "General Assistance",
+                "description": "Responds to general-purpose queries using a fast LLM.",
+                "tags": ["groq", "llm", "general"]
             }
         ]
     }
