@@ -1,1 +1,2 @@
-web: uvicorn main:app --host=0.0.0.0 --port=${PORT}
+web: uvicorn customagent-a2a-server:app --host=0.0.0.0 --port=${PORT}
+
