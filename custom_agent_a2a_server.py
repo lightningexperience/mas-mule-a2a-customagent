@@ -34,15 +34,14 @@ def agent_card():
         "url": base_url,
         "version": "1.0",
         "protocolVersion": "0.3.0",
-        "capabilities": {"streaming": False},
-        "transports": [
+        "preferredTransport": "HTTP+JSON",
+        "additionalInterfaces": [
             {
-                "type": "rest",
-                "version": "0.3.0",
-                "url": f"{base_url}/tasks"
+                "url": base_url,
+                "transport": "HTTP+JSON"
             }
         ],
-        "preferredTransport": "rest",
+        "capabilities": {"streaming": False},
         "defaultInputModes": ["text"],
         "defaultOutputModes": ["text"],
         "skills": [
