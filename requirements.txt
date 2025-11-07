@@ -3,4 +3,7 @@ uvicorn==0.29.0
 httpx==0.27.0
 pydantic==2.7.1
 python-dotenv==1.0.1
-requests==2.31.0
+langchain==0.1.16
+langchain-core==0.1.45
+langchain-community==0.0.34
+langchain-groq==0.1.3
