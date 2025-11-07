@@ -35,6 +35,9 @@ def agent_card():
         "url": os.getenv("BASE_URL", "http://localhost:9000"),
         "version": "1.0",
         "capabilities": {"streaming": False},
+        "defaultInputModes": ["text"],
+        "defaultOutputModes": ["text"],
+        "skills": ["general-assistance"]
     }
 
 @app.post("/tasks/send")
@@ -61,4 +64,3 @@ def handle_task(task: TaskRequest):
             {"role": "agent", "parts": [{"text": agent_reply}]},
         ]
     }
-
