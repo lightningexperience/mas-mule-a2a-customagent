@@ -47,7 +47,7 @@ def get_agent_card(request: Request):
         "protocolVersion": "0.3.0",
         "debug": "VERSION-XYZ-123",
         "name": "Custom Agent A2A",
-        "description": "General purpose LLM queries.",
+        "description": "General purpose LLM queries - VERSION-XYZ-123.",
         "url": f"{base_url}/",
         "version": "6.0.0",
         "capabilities": {"pushNotifications": False, "streaming": False},
