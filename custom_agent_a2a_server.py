@@ -33,7 +33,7 @@ class A2ATaskRequest(BaseModel):
 
 # --- Health Check and Discovery ---
 
-@app.get("/.well-known/agent.json")
+@app.get("/.well-known/agent-card.json")
 def get_agent_card(request: Request):
     """
     Returns the valid Agent Card for discovery. 
