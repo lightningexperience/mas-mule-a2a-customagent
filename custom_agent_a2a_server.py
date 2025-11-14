@@ -45,6 +45,7 @@ def get_agent_card(request: Request):
     # We return the dict directly and let FastAPI handle JSONResponse
     return {
         "protocolVersion": "0.3.0",
+        "debug": "VERSION-XYZ-123",
         "name": "Custom Agent A2A",
         "description": "General purpose LLM queries.",
         "url": f"{base_url}/",
