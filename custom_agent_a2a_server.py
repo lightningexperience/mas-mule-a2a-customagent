@@ -33,42 +33,42 @@ class A2ATaskRequest(BaseModel):
 
 # --- Health Check and Discovery ---
 
-@app.get("/.well-known/agent-card.json")
+from fastapi.responses import JSONResponse
+
+@app.get("/.well-known/agent-card.json", response_class=JSONResponse)
 def get_agent_card(request: Request):
-    """
-    Returns the valid Agent Card for discovery. 
-    The skills structure is explicitly defined here to prevent the Inspector validation crash.
-    """
     base_url = str(request.base_url).rstrip('/')
-    return {
-    "protocolVersion": "0.3.0",
-    "name": "Custom Agent A2A",
-    "description": "General purpose LLM queries.",
-    "url": f"{base_url}/",
-    "version": "6.0.0",
-    "capabilities": {
-        "pushNotifications": False,
-        "streaming": False
-    },
-    "securitySchemes": {},
-    "defaultInputModes": ["text/plain"],
-    "defaultOutputModes": ["text/plain"],
-    "skills": [
-        {
-            "id": "general-llm-query",
-            "name": "General LLM Query",
-            "description": "Answers general knowledge and LLM questions.",
-            "inputModes": ["text/plain"],
-            "outputModes": ["text/plain"],
-            "tags": []
-        }
-    ],
-    "transports": {
-        "http": {
-            "url": f"{base_url}/"
+    agent_card = {
+        "protocolVersion": "0.3.0",
+        "name": "Custom Agent A2A",
+        "description": "General purpose LLM queries.",
+        "url": f"{base_url}/",
+        "version": "6.0.0",
+        "capabilities": {
+            "pushNotifications": False,
+            "streaming": False
+        },
+        "securitySchemes": {},
+        "defaultInputModes": ["text/plain"],
+        "defaultOutputModes": ["text/plain"],
+        "skills": [
+            {
+                "id": "general-llm-query",
+                "name": "General LLM Query",
+                "description": "Answers general knowledge and LLM questions.",
+                "inputModes": ["text/plain"],
+                "outputModes": ["text/plain"],
+                "tags": []
+            }
+        ],
+        "transports": {
+            "http": {
+                "url": f"{base_url}/"
+            }
         }
     }
-}
+    return JSONResponse(content=agent_card)
+
 
 # --- Main A2A Task Endpoint (The Fix) ---
 
