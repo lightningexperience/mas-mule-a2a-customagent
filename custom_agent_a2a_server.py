@@ -6,8 +6,6 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 
 # --- Configuration ---
-# NOTE: We use a mock LLM response for stability, focusing on protocol compliance.
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("CustomAgentServer")
 
@@ -18,20 +16,15 @@ app = FastAPI(
 
 # --- A2A Protocol Schemas (Strictly Enforced) ---
 
-# CRITICAL INPUT SCHEMAS (Used to parse the incoming request body)
 class ContentPart(BaseModel):
-    """Defines the structure of the message content part."""
     type: str = Field(..., description="MIME type, e.g., 'text/plain'")
     value: str = Field(..., description="The content string.")
 
 class A2AInput(BaseModel):
-    """Defines a single input message element."""
     role: str = Field(..., description="Sender role, e.g., 'user'")
     content: List[ContentPart] = Field(..., description="List of content parts")
 
 class A2ATaskRequest(BaseModel):
-    """The full A2A Task request payload sent by the Broker."""
-    # CRITICAL: This is the field (pk) that MUST NOT BE NULL in the response.
     taskId: str = Field(..., description="The mandatory unique ID for this task/session.")
     skillId: str = Field(..., description="The skill being invoked (e.g., 'broker-orchestrator')")
     inputs: List[A2AInput] = Field(..., description="List of messages in the task thread")
@@ -42,7 +35,10 @@ class A2ATaskRequest(BaseModel):
 
 @app.get("/.well-known/agent.json")
 def get_agent_card(request: Request):
-    """Returns the Agent Card for discovery and A2A Inspector validation."""
+    """
+    Returns the valid Agent Card for discovery. 
+    The skills structure is explicitly defined here to prevent the Inspector validation crash.
+    """
     base_url = str(request.base_url).rstrip('/')
     return {
         "protocolVersion": "0.3.0",
@@ -60,7 +56,9 @@ def get_agent_card(request: Request):
                 "name": "General LLM Query",
                 "description": "Answers general knowledge and LLM questions.",
                 "inputModes": ["text/plain"],
-                "outputModes": ["text/plain"]
+                "outputModes": ["text/plain"],
+                "examples": ["What is the capital of France?"],
+                "tags": ["general", "llm"]
             }
         ]
     }
@@ -75,7 +73,6 @@ async def handle_a2a_task(task_request: A2ATaskRequest):
     """
     
     # 1. CRITICAL CONTEXT EXTRACTION (Fixes the Broker's NPE on pk)
-    # The Pydantic model ensures taskId is always present (mandatory Field).
     task_id = task_request.taskId
     
     try:
@@ -108,15 +105,15 @@ async def handle_a2a_task(task_request: A2ATaskRequest):
         "taskId": task_id, 
         "outputs": [
             {
-                "kind": "message",  # FIX: Required for v0.3.0+ protocol
+                "kind": "message",
                 "role": "agent",
-                "parts": [          # FIX: Use "parts" instead of "content"
+                "parts": [
                     {
                         "kind": "text",
                         "text": agent_response_text
                     }
                 ],
-                "contextId": task_id # FIX: Echo the context ID back to prevent NPE
+                "contextId": task_id
             }
         ]
     }
