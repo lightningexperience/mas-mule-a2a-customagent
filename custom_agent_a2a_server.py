@@ -41,27 +41,34 @@ def get_agent_card(request: Request):
     """
     base_url = str(request.base_url).rstrip('/')
     return {
-        "protocolVersion": "0.3.0",
-        "name": "Custom Agent A2A",
-        "description": "General purpose LLM queries (Groq/Placeholder logic). Ensures context ID is echoed back for Broker stability.",
-        "url": f"{base_url}/",
-        "version": "6.0.0",
-        "capabilities": {"pushNotifications": False, "streaming": False},
-        "securitySchemes": {},
-        "defaultInputModes": ["text/plain"],
-        "defaultOutputModes": ["text/plain"],
-        "skills": [
-            {
-                "id": "general-llm-query",
-                "name": "General LLM Query",
-                "description": "Answers general knowledge and LLM questions.",
-                "inputModes": ["text/plain"],
-                "outputModes": ["text/plain"],
-                "examples": ["What is the capital of France?"],
-                "tags": ["general", "llm"]
-            }
-        ]
+    "protocolVersion": "0.3.0",
+    "name": "Custom Agent A2A",
+    "description": "General purpose LLM queries.",
+    "url": f"{base_url}/",
+    "version": "6.0.0",
+    "capabilities": {
+        "pushNotifications": False,
+        "streaming": False
+    },
+    "securitySchemes": {},
+    "defaultInputModes": ["text/plain"],
+    "defaultOutputModes": ["text/plain"],
+    "skills": [
+        {
+            "id": "general-llm-query",
+            "name": "General LLM Query",
+            "description": "Answers general knowledge and LLM questions.",
+            "inputModes": ["text/plain"],
+            "outputModes": ["text/plain"],
+            "tags": []
+        }
+    ],
+    "transports": {
+        "http": {
+            "url": f"{base_url}/"
+        }
     }
+}
 
 # --- Main A2A Task Endpoint (The Fix) ---
 
