@@ -25,29 +25,31 @@ class A2AInput(BaseModel):
     content: List[ContentPart] = Field(..., description="List of content parts")
 
 class A2ATaskRequest(BaseModel):
+    # CRITICAL: This is the field (pk) that MUST NOT BE NULL in the response.
     taskId: str = Field(..., description="The mandatory unique ID for this task/session.")
     skillId: str = Field(..., description="The skill being invoked (e.g., 'broker-orchestrator')")
     inputs: List[A2AInput] = Field(..., description="List of messages in the task thread")
     contextId: Optional[str] = Field(None, description="Optional session context ID.")
 
 
-# --- Health Check and Discovery ---
+# --- Health Check and Discovery (FINAL FIX APPLIED HERE) ---
 
-from fastapi.responses import JSONResponse
-
-@app.get("/.well-known/agent-card.json", response_class=JSONResponse)
+@app.get("/.well-known/agent.json")
 def get_agent_card(request: Request):
+    """
+    Returns the valid Agent Card for discovery. 
+    Includes all mandatory fields (examples, tags) and uses standard FastAPI JSON return.
+    """
     base_url = str(request.base_url).rstrip('/')
-    agent_card = {
+    
+    # We return the dict directly and let FastAPI handle JSONResponse
+    return {
         "protocolVersion": "0.3.0",
         "name": "Custom Agent A2A",
         "description": "General purpose LLM queries.",
         "url": f"{base_url}/",
         "version": "6.0.0",
-        "capabilities": {
-            "pushNotifications": False,
-            "streaming": False
-        },
+        "capabilities": {"pushNotifications": False, "streaming": False},
         "securitySchemes": {},
         "defaultInputModes": ["text/plain"],
         "defaultOutputModes": ["text/plain"],
@@ -58,7 +60,9 @@ def get_agent_card(request: Request):
                 "description": "Answers general knowledge and LLM questions.",
                 "inputModes": ["text/plain"],
                 "outputModes": ["text/plain"],
-                "tags": []
+                # --- MANDATORY FIXES APPLIED HERE ---
+                "examples": ["What is the capital of France?", "Tell me a joke about Python."],
+                "tags": ["general", "llm", "knowledge"] 
             }
         ],
         "transports": {
@@ -67,10 +71,8 @@ def get_agent_card(request: Request):
             }
         }
     }
-    return JSONResponse(content=agent_card)
 
-
-# --- Main A2A Task Endpoint (The Fix) ---
+# --- Main A2A Task Endpoint (NPE Fix) ---
 
 @app.post("/tasks")
 async def handle_a2a_task(task_request: A2ATaskRequest):
