@@ -104,8 +104,6 @@ def get_agent_card(request: Request):
                 "description": "Answers general knowledge and LLM questions.",
                 "inputModes": ["text/plain"],
                 "outputModes": ["text/plain"],
-                "defaultInputMode": "text/plain",
-                "defaultOutputMode": "text/plain",
                 "examples": [
                     "What is the capital of France?",
                     "Tell me a joke about Python.",
