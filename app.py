@@ -30,7 +30,7 @@ app.add_middleware(
 
 class ContentPart(BaseModel):
     type: str = Field(..., description="MIME type, e.g., 'text/plain'")
-    value: str = Field(..., description="The content string.")
+    value: str = Field(..., description="the content string.")
 
 class A2AInput(BaseModel):
     role: str = Field(..., description="Sender role, e.g., 'user'")
@@ -60,9 +60,17 @@ def get_agent_card(request: Request):
     host = request.headers.get("host", str(request.url).split("//")[1].split("/")[0])
     base_url = f"{forwarded_proto}://{host}"
     
-    logger.info(f"Agent card requested from: {request.client}")
+    # Enhanced debugging
+    logger.info("="*60)
+    logger.info("AGENT CARD REQUEST")
+    logger.info("="*60)
+    logger.info(f"Client: {request.client}")
     logger.info(f"Detected base URL: {base_url}")
-    logger.info(f"Headers: x-forwarded-proto={forwarded_proto}, host={host}")
+    logger.info(f"x-forwarded-proto: {forwarded_proto}")
+    logger.info(f"host: {host}")
+    logger.info(f"request.url: {request.url}")
+    logger.info(f"request.base_url: {request.base_url}")
+    logger.info("="*60)
     
     agent_card = {
         "protocolVersion": "0.3.0",
@@ -72,10 +80,16 @@ def get_agent_card(request: Request):
         "url": f"{base_url}/",
         "version": "8.1.0",
         
+        # Optional vendor information
+        "vendor": "Custom",
+        "apiVersion": "1.0.0",
+        
         # Inspector-compatible capabilities
         "capabilities": {
             "pushNotifications": False,
-            "streaming": False
+            "streaming": False,
+            "batching": False,
+            "stateful": False
         },
         
         "securitySchemes": {},
@@ -90,6 +104,8 @@ def get_agent_card(request: Request):
                 "description": "Answers general knowledge and LLM questions.",
                 "inputModes": ["text/plain"],
                 "outputModes": ["text/plain"],
+                "defaultInputMode": "text/plain",
+                "defaultOutputMode": "text/plain",
                 "examples": [
                     "What is the capital of France?",
                     "Tell me a joke about Python.",
@@ -105,10 +121,13 @@ def get_agent_card(request: Request):
         "transports": {
             "JSONRPC": {
                 "url": f"{base_url}/json-rpc",
-                "version": "2.0"
+                "version": "2.0",
+                "contentTypes": ["application/json"]
             }
         }
     }
+    
+    logger.info(f"Returning agent card with JSONRPC URL: {base_url}/json-rpc")
     
     return agent_card
 
