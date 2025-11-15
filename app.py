@@ -1,8 +1,8 @@
-# version 8.0.0 - Fixed for A2A Inspector Compatibility
+# version 8.1.0 - Heroku Optimized
 
 import os
 import logging
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ValidationError
@@ -17,7 +17,7 @@ app = FastAPI(
     description="A Python A2A agent designed for JSONRPC transport compatibility."
 )
 
-# Add CORS middleware to allow A2A Inspector to connect
+# CRITICAL FOR HEROKU: Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -44,26 +44,33 @@ class A2ATaskRequest(BaseModel):
 
 
 # -----------------------------
-#   Agent Card (JSONRPC FIX)
+#   Agent Card (HEROKU COMPATIBLE)
 # -----------------------------
 
 @app.get("/.well-known/agent-card.json")
 def get_agent_card(request: Request):
     """
     Returns the agent card with proper JSONRPC transport configuration.
-    This is the critical endpoint that A2A Inspector uses to discover the agent.
+    HEROKU SPECIFIC: Handles both HTTP and HTTPS, uses request.url to get proper scheme
     """
     
-    base_url = str(request.base_url).rstrip('/')
+    # CRITICAL FOR HEROKU: Use the actual request URL to get the correct base URL
+    # Heroku uses HTTPS but may proxy as HTTP, so we need to check headers
+    forwarded_proto = request.headers.get("x-forwarded-proto", "http")
+    host = request.headers.get("host", str(request.url).split("//")[1].split("/")[0])
+    base_url = f"{forwarded_proto}://{host}"
     
-    # Ensure we're returning the exact structure A2A Inspector expects
+    logger.info(f"Agent card requested from: {request.client}")
+    logger.info(f"Detected base URL: {base_url}")
+    logger.info(f"Headers: x-forwarded-proto={forwarded_proto}, host={host}")
+    
     agent_card = {
         "protocolVersion": "0.3.0",
         
         "name": "Custom Agent A2A",
         "description": "General purpose LLM queries with JSONRPC support.",
         "url": f"{base_url}/",
-        "version": "8.0.0",
+        "version": "8.1.0",
         
         # Inspector-compatible capabilities
         "capabilities": {
@@ -103,9 +110,6 @@ def get_agent_card(request: Request):
         }
     }
     
-    logger.info(f"Agent card requested. Base URL: {base_url}")
-    logger.info(f"JSONRPC endpoint: {base_url}/json-rpc")
-    
     return agent_card
 
 
@@ -120,10 +124,12 @@ async def json_rpc_handler(payload: Dict[str, Any]):
     Routes method "task" to the task handler.
     """
     
-    logger.info(f"JSONRPC REQUEST: {payload}")
+    logger.info(f"JSONRPC REQUEST received")
+    logger.info(f"Payload: {payload}")
     
     # Validate JSONRPC structure
     if "jsonrpc" not in payload or payload["jsonrpc"] != "2.0":
+        logger.warning(f"Invalid JSONRPC version: {payload.get('jsonrpc')}")
         return {
             "jsonrpc": "2.0",
             "id": payload.get("id"),
@@ -139,6 +145,7 @@ async def json_rpc_handler(payload: Dict[str, Any]):
     
     # Only support "task" method
     if method != "task":
+        logger.warning(f"Unknown method: {method}")
         return {
             "jsonrpc": "2.0",
             "id": rpc_id,
@@ -151,6 +158,7 @@ async def json_rpc_handler(payload: Dict[str, Any]):
     # Validate and parse task parameters
     try:
         task_request = A2ATaskRequest(**params)
+        logger.info(f"Task request validated: {task_request.taskId}")
     except ValidationError as e:
         logger.error(f"Invalid task parameters: {str(e)}")
         return {
@@ -175,6 +183,7 @@ async def json_rpc_handler(payload: Dict[str, Any]):
     # Process the task
     try:
         response = await handle_a2a_task(task_request)
+        logger.info(f"Task {task_request.taskId} completed successfully")
         
         return {
             "jsonrpc": "2.0",
@@ -182,7 +191,7 @@ async def json_rpc_handler(payload: Dict[str, Any]):
             "result": response
         }
     except Exception as e:
-        logger.error(f"Error processing task: {str(e)}")
+        logger.error(f"Error processing task: {str(e)}", exc_info=True)
         return {
             "jsonrpc": "2.0",
             "id": rpc_id,
@@ -203,6 +212,7 @@ async def handle_a2a_task_endpoint(task_request: A2ATaskRequest):
     Direct HTTP endpoint for task processing (fallback).
     Most A2A clients will use JSONRPC, but this provides compatibility.
     """
+    logger.info(f"Direct HTTP task request: {task_request.taskId}")
     return await handle_a2a_task(task_request)
 
 
@@ -268,15 +278,15 @@ async def handle_a2a_task(task_request: A2ATaskRequest):
 
 
 # ------------------------------------------------------
-#   Health Check Endpoint
+#   Health Check Endpoint (Important for Heroku)
 # ------------------------------------------------------
 
 @app.get("/health")
 def health_check():
-    """Simple health check endpoint"""
+    """Health check endpoint - Heroku uses this to verify the app is running"""
     return {
         "status": "healthy",
-        "version": "8.0.0",
+        "version": "8.1.0",
         "service": "Custom Agent A2A Server"
     }
 
@@ -286,22 +296,31 @@ def health_check():
 # ------------------------------------------------------
 
 @app.get("/")
-def root():
+def root(request: Request):
     """Root endpoint with service information"""
+    forwarded_proto = request.headers.get("x-forwarded-proto", "http")
+    host = request.headers.get("host", "localhost")
+    base_url = f"{forwarded_proto}://{host}"
+    
     return {
         "service": "Custom Agent A2A Server",
-        "version": "8.0.0",
+        "version": "8.1.0",
         "status": "running",
+        "deployment": "Heroku",
+        "base_url": base_url,
         "endpoints": {
-            "agent_card": "/.well-known/agent-card.json",
-            "jsonrpc": "/json-rpc",
-            "tasks": "/tasks",
-            "health": "/health"
-        }
+            "agent_card": f"{base_url}/.well-known/agent-card.json",
+            "jsonrpc": f"{base_url}/json-rpc",
+            "tasks": f"{base_url}/tasks",
+            "health": f"{base_url}/health"
+        },
+        "instructions": "Use the agent_card URL in A2A Inspector to connect"
     }
 
 
+# HEROKU SPECIFIC: Application must bind to the PORT environment variable
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 8000))
+    port = int(os.environ.get("PORT", 8000))
+    logger.info(f"Starting server on port {port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
