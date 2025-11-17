@@ -41,7 +41,7 @@ def call_groq_llm(prompt: str) -> str:
             {
                 "role": "system",
                 "content": (
-                    "You are a helpful, general-purpose AI assistant. "
+                    "You are a helpful, general-purpose AI agent. "
                     "Return concise, direct answers in plain text. "
                     "Do not add routing labels or meta commentary."
                 ),
@@ -103,7 +103,7 @@ def build_a2a_message_event(reply_text: str) -> Dict[str, Any]:
     """
     This is the FIX. Mule requires:
         result.kind = "message"
-        result.role = "assistant"
+        result.role = "agent"
         result.messageId = uuid
         result.parts = [{kind:"text", text:"..."}]
     """
@@ -111,7 +111,7 @@ def build_a2a_message_event(reply_text: str) -> Dict[str, Any]:
 
     return {
         "kind": "message",
-        "role": "assistant",
+        "role": "agent",
         "messageId": str(uuid.uuid4()),
         "parts": [
             {
@@ -191,7 +191,7 @@ async def tasks_endpoint(task_request: Dict[str, Any] = Body(...)) -> JSONRespon
         "outputs": [
             {
                 "kind": "message",
-                "role": "assistant",
+                "role": "agent",
                 "parts": [
                     {
                         "kind": "text",
