@@ -1,9 +1,9 @@
-# app.py v0.4 - A2A-compatible stateless Groq LLM Custom Agent (no LangChain)
+# app.py v0.5 - A2A-compatible stateless Groq LLM Custom Agent (no LangChain)
 
 import os
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from fastapi import FastAPI, Request, Body
 from fastapi.responses import JSONResponse
@@ -27,13 +27,6 @@ app = FastAPI(title="CustomAgent A2A Groq LLM Server")
 # Helper: Call Groq Chat Completions API
 # -----------------------------------------------------------------------------
 def call_groq_llm(prompt: str) -> str:
-    """
-    Calls the Groq Chat Completions API using environment variables:
-    - GROQ_API_KEY
-    - GROQ_MODEL (e.g., "llama-3.3-70b-versatile")
-
-    Returns plain text from the model or a simple error string.
-    """
     api_key = os.environ.get("GROQ_API_KEY")
     model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
@@ -89,24 +82,9 @@ def call_groq_llm(prompt: str) -> str:
 # Helper: Extract plain text from Fabric/A2A-style "message" payload
 # -----------------------------------------------------------------------------
 def extract_text_from_message(message: Dict[str, Any]) -> str:
-    """
-    The inspector / Fabric sends messages like:
-    {
-      "role": "user",
-      "parts": [
-        { "text": "hey", "kind": "text" }
-      ],
-      "messageId": "...",
-      "kind": "message"
-    }
-    We simply join all 'text' fields we see.
-    """
     parts: List[Dict[str, Any]] = message.get("parts", [])
     texts: List[str] = []
     for p in parts:
-        # Two common patterns:
-        #  - { "text": "...", "kind": "text" }
-        #  - { "value": "...", "type": "text/plain" } (A2A style)
         if "text" in p:
             texts.append(str(p["text"]))
         elif p.get("type") == "text/plain" and "value" in p:
@@ -134,32 +112,22 @@ async def handle_jsonrpc(payload: Dict[str, Any]) -> JSONResponse:
         error = {"code": -32601, "message": f"Unsupported method: {method}"}
         return JSONResponse({"jsonrpc": "2.0", "id": msg_id, "error": error}, status_code=400)
 
-    # Extract user text from params.message
     params = payload.get("params", {})
     message = params.get("message", {})
     user_text = extract_text_from_message(message)
 
-    # Call Groq LLM
     reply_text = call_groq_llm(user_text)
 
-    # Build assistant message in A2A/Fabric-friendly format
     assistant_message = {
         "role": "assistant",
-        "parts": [
-            {
-                "text": reply_text,
-                "kind": "text",
-            }
-        ],
+        "parts": [{"text": reply_text, "kind": "text"}],
         "kind": "message",
     }
 
     response_body = {
         "jsonrpc": "2.0",
         "id": msg_id,
-        "result": {
-            "message": assistant_message
-        },
+        "result": {"message": assistant_message},
     }
     return JSONResponse(response_body)
 
@@ -169,38 +137,15 @@ async def handle_jsonrpc(payload: Dict[str, Any]) -> JSONResponse:
 # -----------------------------------------------------------------------------
 @app.post("/tasks")
 async def tasks_endpoint(task_request: Dict[str, Any] = Body(...)) -> JSONResponse:
-    """
-    Minimal A2A-compatible /tasks implementation.
-
-    Expected shape (simplified):
-
-    {
-      "taskId": "123",
-      "skillId": "general-llm-query",
-      "inputs": [
-        {
-          "role": "user",
-          "content": [
-            {"type": "text/plain", "value": "hello"}
-          ]
-        }
-      ],
-      "contextId": null
-    }
-    """
     task_id = task_request.get("taskId")
     skill_id = task_request.get("skillId")
     inputs = task_request.get("inputs", [])
 
-    logger.info(
-        f"CustomAgentServer:Processing Task ID: {task_id}, Skill ID: {skill_id}"
-    )
+    logger.info(f"CustomAgentServer:Processing Task ID: {task_id}, Skill ID: {skill_id}")
 
-    # Extract plain text from inputs
     all_texts: List[str] = []
     for inp in inputs:
-        content_items = inp.get("content", [])
-        for c in content_items:
+        for c in inp.get("content", []):
             if c.get("type") == "text/plain" and "value" in c:
                 all_texts.append(str(c["value"]))
 
@@ -215,12 +160,7 @@ async def tasks_endpoint(task_request: Dict[str, Any] = Body(...)) -> JSONRespon
         "outputs": [
             {
                 "role": "assistant",
-                "content": [
-                    {
-                        "type": "text/plain",
-                        "value": reply_text,
-                    }
-                ],
+                "content": [{"type": "text/plain", "value": reply_text}],
             }
         ],
     }
@@ -228,7 +168,7 @@ async def tasks_endpoint(task_request: Dict[str, Any] = Body(...)) -> JSONRespon
 
 
 # -----------------------------------------------------------------------------
-# Root JSON-RPC endpoint (Fabric calls POST / with JSON-RPC payload)
+# Root JSON-RPC endpoint
 # -----------------------------------------------------------------------------
 @app.post("/")
 async def root_jsonrpc_endpoint(payload: Dict[str, Any] = Body(...)) -> JSONResponse:
@@ -236,7 +176,7 @@ async def root_jsonrpc_endpoint(payload: Dict[str, Any] = Body(...)) -> JSONResp
 
 
 # -----------------------------------------------------------------------------
-# Dedicated JSON-RPC endpoint (Inspector / A2A clients can use /json-rpc)
+# Dedicated JSON-RPC endpoint
 # -----------------------------------------------------------------------------
 @app.post("/json-rpc")
 async def jsonrpc_endpoint(payload: Dict[str, Any] = Body(...)) -> JSONResponse:
@@ -244,7 +184,7 @@ async def jsonrpc_endpoint(payload: Dict[str, Any] = Body(...)) -> JSONResponse:
 
 
 # -----------------------------------------------------------------------------
-# Agent card endpoint: /.well-known/agent-card.json
+# Agent card endpoint
 # -----------------------------------------------------------------------------
 @app.get("/.well-known/agent-card.json")
 async def agent_card(request: Request) -> JSONResponse:
@@ -252,22 +192,9 @@ async def agent_card(request: Request) -> JSONResponse:
     logger.info("CustomAgentServer:AGENT CARD REQUEST")
     logger.info("============================================================")
 
-    client = request.client
-    logger.info(f"CustomAgentServer:Client: {client}")
-
-    # Derive base URL from request
     base_url = str(request.base_url).rstrip("/")
-    logger.info(f"CustomAgentServer:Detected base URL: {base_url}")
-
-    xfp = request.headers.get("x-forwarded-proto")
-    host = request.headers.get("host")
-    logger.info(f"CustomAgentServer:x-forwarded-proto: {xfp}")
-    logger.info(f"CustomAgentServer:host: {host}")
-    logger.info(f"CustomAgentServer:request.url: {request.url}")
-    logger.info(f"CustomAgentServer:request.base_url: {request.base_url}")
-    logger.info("============================================================")
-
     jsonrpc_url = f"{base_url}/json-rpc"
+
     logger.info(f"CustomAgentServer:Returning agent card with JSONRPC URL: {jsonrpc_url}")
 
     card = {
@@ -276,10 +203,7 @@ async def agent_card(request: Request) -> JSONResponse:
         "description": "General purpose LLM queries - Groq-powered custom agent.",
         "url": base_url,
         "preferredTransport": "JSONRPC",
-        "capabilities": {
-            "pushNotifications": False,
-            "streaming": False,
-        },
+        "capabilities": {"pushNotifications": False, "streaming": False},
         "defaultInputModes": ["text/plain"],
         "defaultOutputModes": ["text/plain"],
         "securitySchemes": {},
@@ -296,14 +220,10 @@ async def agent_card(request: Request) -> JSONResponse:
                 ],
                 "inputModes": ["text/plain"],
                 "outputModes": ["text/plain"],
+                "tags": ["llm", "general", "chat"]   # ← REQUIRED FIX
             }
         ],
-        # Some inspectors/clients expect explicit endpoint info
-        "endpoints": {
-            "jsonrpc": {
-                "url": jsonrpc_url
-            }
-        },
+        "endpoints": {"jsonrpc": {"url": jsonrpc_url}},
     }
 
     return JSONResponse(card)
