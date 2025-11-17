@@ -1,14 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 pydantic
 requests
 python-dotenv
-
-# LangChain + Groq (your LLM agent)
-langchain
-langchain-core
-langchain-community
-langchain-groq
-
-# (optional but helps)
-tiktoken
