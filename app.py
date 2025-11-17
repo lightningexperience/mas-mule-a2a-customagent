@@ -79,23 +79,51 @@ def call_groq_llm(prompt: str) -> str:
 
 
 # -----------------------------------------------------------------------------
-# Helper: Extract plain text from Fabric/A2A-style "message" payload
+# Helper: Extract plain text from "message" envelope
 # -----------------------------------------------------------------------------
 def extract_text_from_message(message: Dict[str, Any]) -> str:
     parts: List[Dict[str, Any]] = message.get("parts", [])
     texts: List[str] = []
+
     for p in parts:
         if "text" in p:
             texts.append(str(p["text"]))
         elif p.get("type") == "text/plain" and "value" in p:
             texts.append(str(p["value"]))
+
     joined = "\n".join(texts).strip()
     logger.info(f"CustomAgentServer:Received Message: {joined[:80]}...")
     return joined
 
 
 # -----------------------------------------------------------------------------
-# JSON-RPC handler
+# Build A2A-compatible message response (IMPORTANT)
+# -----------------------------------------------------------------------------
+def build_a2a_message_event(reply_text: str) -> Dict[str, Any]:
+    """
+    This is the FIX. Mule requires:
+        result.kind = "message"
+        result.role = "assistant"
+        result.messageId = uuid
+        result.parts = [{kind:"text", text:"..."}]
+    """
+    import uuid
+
+    return {
+        "kind": "message",
+        "role": "assistant",
+        "messageId": str(uuid.uuid4()),
+        "parts": [
+            {
+                "kind": "text",
+                "text": reply_text
+            }
+        ]
+    }
+
+
+# -----------------------------------------------------------------------------
+# JSON-RPC handler (Fabric sends POST / with message/send)
 # -----------------------------------------------------------------------------
 async def handle_jsonrpc(payload: Dict[str, Any]) -> JSONResponse:
     logger.info(f"CustomAgentServer:Root POST raw payload: {payload}")
@@ -105,35 +133,39 @@ async def handle_jsonrpc(payload: Dict[str, Any]) -> JSONResponse:
     msg_id = payload.get("id")
 
     if jsonrpc_version != "2.0":
-        error = {"code": -32600, "message": "Invalid JSON-RPC version"}
-        return JSONResponse({"jsonrpc": "2.0", "id": msg_id, "error": error}, status_code=400)
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "error": {"code": -32600, "message": "Invalid JSON-RPC version"}
+        }, status_code=400)
 
     if method != "message/send":
-        error = {"code": -32601, "message": f"Unsupported method: {method}"}
-        return JSONResponse({"jsonrpc": "2.0", "id": msg_id, "error": error}, status_code=400)
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "error": {"code": -32601, "message": f"Unsupported method: {method}"}
+        }, status_code=400)
 
+    # Extract text
     params = payload.get("params", {})
     message = params.get("message", {})
     user_text = extract_text_from_message(message)
 
+    # LLM call
     reply_text = call_groq_llm(user_text)
 
-    assistant_message = {
-        "role": "assistant",
-        "parts": [{"text": reply_text, "kind": "text"}],
-        "kind": "message",
-    }
+    # Build A2A event
+    event = build_a2a_message_event(reply_text)
 
-    response_body = {
+    return JSONResponse({
         "jsonrpc": "2.0",
         "id": msg_id,
-        "result": {"message": assistant_message},
-    }
-    return JSONResponse(response_body)
+        "result": event
+    })
 
 
 # -----------------------------------------------------------------------------
-# A2A /tasks endpoint
+# /tasks endpoint (A2A direct mode)
 # -----------------------------------------------------------------------------
 @app.post("/tasks")
 async def tasks_endpoint(task_request: Dict[str, Any] = Body(...)) -> JSONResponse:
@@ -143,6 +175,7 @@ async def tasks_endpoint(task_request: Dict[str, Any] = Body(...)) -> JSONRespon
 
     logger.info(f"CustomAgentServer:Processing Task ID: {task_id}, Skill ID: {skill_id}")
 
+    # Extract text
     all_texts: List[str] = []
     for inp in inputs:
         for c in inp.get("content", []):
@@ -150,25 +183,28 @@ async def tasks_endpoint(task_request: Dict[str, Any] = Body(...)) -> JSONRespon
                 all_texts.append(str(c["value"]))
 
     user_text = "\n".join(all_texts).strip()
-    logger.info(f"CustomAgentServer:Task received text: {user_text[:80]}...")
-
     reply_text = call_groq_llm(user_text)
 
-    task_response = {
+    return JSONResponse({
         "taskId": task_id,
         "status": "completed",
         "outputs": [
             {
+                "kind": "message",
                 "role": "assistant",
-                "content": [{"type": "text/plain", "value": reply_text}],
+                "parts": [
+                    {
+                        "kind": "text",
+                        "text": reply_text
+                    }
+                ]
             }
-        ],
-    }
-    return JSONResponse(task_response)
+        ]
+    })
 
 
 # -----------------------------------------------------------------------------
-# Root JSON-RPC endpoint
+# Root JSON-RPC endpoint (Fabric POST /)
 # -----------------------------------------------------------------------------
 @app.post("/")
 async def root_jsonrpc_endpoint(payload: Dict[str, Any] = Body(...)) -> JSONResponse:
@@ -176,7 +212,7 @@ async def root_jsonrpc_endpoint(payload: Dict[str, Any] = Body(...)) -> JSONResp
 
 
 # -----------------------------------------------------------------------------
-# Dedicated JSON-RPC endpoint
+# Dedicated /json-rpc endpoint
 # -----------------------------------------------------------------------------
 @app.post("/json-rpc")
 async def jsonrpc_endpoint(payload: Dict[str, Any] = Body(...)) -> JSONResponse:
@@ -195,15 +231,16 @@ async def agent_card(request: Request) -> JSONResponse:
     base_url = str(request.base_url).rstrip("/")
     jsonrpc_url = f"{base_url}/json-rpc"
 
-    logger.info(f"CustomAgentServer:Returning agent card with JSONRPC URL: {jsonrpc_url}")
-
     card = {
         "protocolVersion": "0.3.0",
         "name": "Custom Agent A2A",
         "description": "General purpose LLM queries - Groq-powered custom agent.",
         "url": base_url,
         "preferredTransport": "JSONRPC",
-        "capabilities": {"pushNotifications": False, "streaming": False},
+        "capabilities": {
+            "pushNotifications": False,
+            "streaming": False,
+        },
         "defaultInputModes": ["text/plain"],
         "defaultOutputModes": ["text/plain"],
         "securitySchemes": {},
@@ -213,17 +250,30 @@ async def agent_card(request: Request) -> JSONResponse:
                 "id": "general-llm-query",
                 "name": "General LLM Query",
                 "description": "Answers general knowledge and LLM questions.",
-                "examples": [
-                    "hey",
-                    "whats the capital of india",
-                    "Tell me a fun fact about space",
-                ],
+                "examples": ["hey", "whats the capital of india", "Tell me a fun fact"],
                 "inputModes": ["text/plain"],
                 "outputModes": ["text/plain"],
-                "tags": ["llm", "general", "chat"]   # ← REQUIRED FIX
+                "tags": ["llm", "general", "chat"]
             }
         ],
-        "endpoints": {"jsonrpc": {"url": jsonrpc_url}},
+        "endpoints": {"jsonrpc": {"url": jsonrpc_url}}
     }
 
     return JSONResponse(card)
+
+
+# -----------------------------------------------------------------------------
+# Health
+# -----------------------------------------------------------------------------
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+
+
+# -----------------------------------------------------------------------------
+# Heroku entrypoint
+# -----------------------------------------------------------------------------
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
