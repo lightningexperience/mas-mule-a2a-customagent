@@ -84,6 +84,9 @@ def get_agent_card(request: Request):
                 "inputModes": ["text/plain"],
                 "outputModes": ["text/plain"],
                 "examples": [
+                    "What is the capital of France?",
+                    "Tell me a joke",
+                    "How are you today?",
                     "Explain gravity in simple terms.",
                     "Give me a fun fact about space.",
                     "Summarize any concept."
