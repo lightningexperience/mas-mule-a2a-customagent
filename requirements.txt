@@ -1,4 +1,14 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.0
-gunicorn==21.2.0
+fastapi
+uvicorn
+pydantic
+requests
+python-dotenv
+
+# LangChain + Groq (your LLM agent)
+langchain
+langchain-core
+langchain-community
+langchain-groq
+
+# (optional but helps)
+tiktoken
