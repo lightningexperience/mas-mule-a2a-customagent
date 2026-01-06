@@ -1,4 +1,5 @@
-# app.py v0.5 - A2A-compatible stateless Groq LLM Custom Agent (no LangChain)
+# app.py v0.6 - A2A-compatible stateless Groq LLM Custom Agent
+# Fix: Added User-Agent header to bypass WAF blocking
 
 import os
 import json
@@ -28,6 +29,7 @@ app = FastAPI(title="CustomAgent A2A Groq LLM Server")
 # -----------------------------------------------------------------------------
 def call_groq_llm(prompt: str) -> str:
     api_key = os.environ.get("GROQ_API_KEY")
+    # Defaulting to the versatile model if not specified
     model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
     if not api_key:
@@ -52,10 +54,14 @@ def call_groq_llm(prompt: str) -> str:
     }
 
     data = json.dumps(payload).encode("utf-8")
+    
+    # --- FIX APPLIED HERE ---
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
+        "User-Agent": "CustomAgentServer/1.0 (Heroku; Python)",  # Required to bypass security blocks
     }
+    # ------------------------
 
     req = urllib.request.Request(url, data=data, headers=headers)
 
@@ -63,7 +69,7 @@ def call_groq_llm(prompt: str) -> str:
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
             resp_json = json.loads(raw)
-        logger.info("Groq LLM call succeeded.")
+        logger.info(f"Groq LLM call succeeded using model: {model}")
         return (
             resp_json.get("choices", [{}])[0]
             .get("message", {})
@@ -71,8 +77,10 @@ def call_groq_llm(prompt: str) -> str:
             .strip()
         )
     except urllib.error.HTTPError as e:
-        logger.error(f"Groq HTTP error: {e} - {e.read().decode('utf-8', errors='ignore')}")
-        return "Sorry, I had trouble contacting the language model (HTTP error)."
+        # Improved error logging to see exactly why it failed
+        error_body = e.read().decode('utf-8', errors='ignore')
+        logger.error(f"Groq HTTP error {e.code}: {e.reason} - Body: {error_body}")
+        return f"Sorry, I had trouble contacting the language model (HTTP {e.code})."
     except Exception as e:
         logger.error(f"Groq LLM error: {e}")
         return "Sorry, I had trouble contacting the language model."
