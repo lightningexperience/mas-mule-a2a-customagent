@@ -1,5 +1,5 @@
-# app.py v0.6 - A2A-compatible stateless Groq LLM Custom Agent
-# Fix: Added User-Agent header to bypass WAF blocking
+# app.py v0.7 - A2A-compatible stateless Groq LLM Custom Agent
+# Update: Switched from brittle urllib to robust 'requests' library
 
 import os
 import json
@@ -9,8 +9,8 @@ from typing import Any, Dict, List
 from fastapi import FastAPI, Request, Body
 from fastapi.responses import JSONResponse
 
-import urllib.request
-import urllib.error
+# --- CHANGED: Using requests instead of urllib ---
+import requests
 
 # -----------------------------------------------------------------------------
 # Logging setup
@@ -25,7 +25,7 @@ app = FastAPI(title="CustomAgent A2A Groq LLM Server")
 
 
 # -----------------------------------------------------------------------------
-# Helper: Call Groq Chat Completions API
+# Helper: Call Groq Chat Completions API (Using 'requests')
 # -----------------------------------------------------------------------------
 def call_groq_llm(prompt: str) -> str:
     api_key = os.environ.get("GROQ_API_KEY")
@@ -37,6 +37,8 @@ def call_groq_llm(prompt: str) -> str:
         return "Error: GROQ_API_KEY is not configured on the server."
 
     url = "https://api.groq.com/openai/v1/chat/completions"
+    
+    # 'requests' handles JSON serialization automatically with the json= parameter
     payload = {
         "model": model,
         "messages": [
@@ -53,36 +55,45 @@ def call_groq_llm(prompt: str) -> str:
         "temperature": 0.3,
     }
 
-    data = json.dumps(payload).encode("utf-8")
-    
-    # --- FIX APPLIED HERE ---
+    # We still keep the custom User-Agent to be safe against WAFs
     headers = {
-        "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
-        "User-Agent": "CustomAgentServer/1.0 (Heroku; Python)",  # Required to bypass security blocks
+        "User-Agent": "CustomAgentServer/1.0 (Heroku; Python; requests)",
     }
-    # ------------------------
-
-    req = urllib.request.Request(url, data=data, headers=headers)
 
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            raw = resp.read().decode("utf-8")
-            resp_json = json.loads(raw)
+        # --- THE SWITCH TO REQUESTS ---
+        # This automatically handles connection pooling and encoding
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        
+        # Raise an error immediately if the HTTP status code is 4xx or 5xx
+        response.raise_for_status()
+        
+        resp_json = response.json()
         logger.info(f"Groq LLM call succeeded using model: {model}")
+        
         return (
             resp_json.get("choices", [{}])[0]
             .get("message", {})
             .get("content", "")
             .strip()
         )
-    except urllib.error.HTTPError as e:
-        # Improved error logging to see exactly why it failed
-        error_body = e.read().decode('utf-8', errors='ignore')
-        logger.error(f"Groq HTTP error {e.code}: {e.reason} - Body: {error_body}")
-        return f"Sorry, I had trouble contacting the language model (HTTP {e.code})."
+
+    except requests.exceptions.HTTPError as http_err:
+        # Captures 401 Unauthorized, 404 Not Found, 429 Rate Limit, etc.
+        logger.error(f"Groq HTTP error: {http_err} - Body: {response.text}")
+        return f"Sorry, I had trouble contacting the language model (HTTP Error)."
+        
+    except requests.exceptions.ConnectionError:
+        logger.error("Groq Connection error: Could not reach the API endpoint.")
+        return "Sorry, I could not connect to the language model."
+        
+    except requests.exceptions.Timeout:
+        logger.error("Groq Timeout error: The request took too long.")
+        return "Sorry, the language model timed out."
+        
     except Exception as e:
-        logger.error(f"Groq LLM error: {e}")
+        logger.error(f"Groq unexpected error: {e}")
         return "Sorry, I had trouble contacting the language model."
 
 
@@ -105,16 +116,9 @@ def extract_text_from_message(message: Dict[str, Any]) -> str:
 
 
 # -----------------------------------------------------------------------------
-# Build A2A-compatible message response (IMPORTANT)
+# Build A2A-compatible message response
 # -----------------------------------------------------------------------------
 def build_a2a_message_event(reply_text: str) -> Dict[str, Any]:
-    """
-    This is the FIX. Mule requires:
-        result.kind = "message"
-        result.role = "agent"
-        result.messageId = uuid
-        result.parts = [{kind:"text", text:"..."}]
-    """
     import uuid
 
     return {
@@ -131,7 +135,7 @@ def build_a2a_message_event(reply_text: str) -> Dict[str, Any]:
 
 
 # -----------------------------------------------------------------------------
-# JSON-RPC handler (Fabric sends POST / with message/send)
+# JSON-RPC handler
 # -----------------------------------------------------------------------------
 async def handle_jsonrpc(payload: Dict[str, Any]) -> JSONResponse:
     logger.info(f"CustomAgentServer:Root POST raw payload: {payload}")
@@ -212,7 +216,7 @@ async def tasks_endpoint(task_request: Dict[str, Any] = Body(...)) -> JSONRespon
 
 
 # -----------------------------------------------------------------------------
-# Root JSON-RPC endpoint (Fabric POST /)
+# Root JSON-RPC endpoint
 # -----------------------------------------------------------------------------
 @app.post("/")
 async def root_jsonrpc_endpoint(payload: Dict[str, Any] = Body(...)) -> JSONResponse:
